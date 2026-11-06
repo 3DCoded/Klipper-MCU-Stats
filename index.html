@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Klipper MCU Stats</title>
+    <style>
+        :root {
+            --bg: #f2f5f4;
+            --panel: #fff;
+            --ink: #16201d;
+            --mute: #65726e;
+            --line: #dce3e0;
+            --grid: #e9eeec;
+            --c1: #0b8a79;
+            --c2: #d1771f;
+            --c3: #5565d6;
+            --bad: #c53030;
+            --ok: #23915a;
+            color-scheme: light
+        }
+
+        @media(prefers-color-scheme:dark) {
+            :root {
+                --bg: #0f1514;
+                --panel: #172120;
+                --ink: #e5eeeb;
+                --mute: #8c9d98;
+                --line: #293634;
+                --grid: #202b29;
+                --c1: #3ccfb8;
+                --c2: #f2a24f;
+                --c3: #93a0ff;
+                --bad: #ff6b6b;
+                --ok: #4cd68a;
+                color-scheme: dark
+            }
+        }
+
+        * {
+            box-sizing: border-box
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif
+        }
+
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 14px;
+            align-items: center;
+            padding: 10px 18px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--line)
+        }
+
+        h1 {
+            font-size: 17px;
+            margin: 0 6px 0 0;
+            font-weight: 650;
+            letter-spacing: -.01em
+        }
+
+        form {
+            display: flex;
+            gap: 6px;
+            flex: 1 1 320px;
+            max-width: 520px
+        }
+
+        input,
+        select,
+        button {
+            font: inherit;
+            color: var(--ink);
+            background: var(--bg);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 6px 10px
+        }
+
+        input {
+            flex: 1;
+            min-width: 0
+        }
+
+        button {
+            cursor: pointer
+        }
+
+        button:hover {
+            border-color: var(--c1)
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--c1);
+            outline-offset: 1px
+        }
+
+        button.primary {
+            background: var(--c1);
+            border-color: var(--c1);
+            color: #fff;
+            font-weight: 600
+        }
+
+        #status {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            color: var(--mute);
+            font-size: 13px
+        }
+
+        #dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--mute)
+        }
+
+        #dot.ok {
+            background: var(--ok)
+        }
+
+        #dot.bad {
+            background: var(--bad)
+        }
+
+        main {
+            padding: 16px 18px;
+            display: grid;
+            gap: 16px
+        }
+
+        .empty {
+            color: var(--mute);
+            padding: 40px 0;
+            text-align: center;
+            max-width: 560px;
+            margin: auto
+        }
+
+        .mcu {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 14px 14px 10px
+        }
+
+        .mhead {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 4px 14px;
+            margin-bottom: 10px
+        }
+
+        .mhead h2 {
+            margin: 0;
+            font-size: 16px
+        }
+
+        .mhead .meta {
+            color: var(--mute);
+            font-size: 12.5px
+        }
+
+        .badge {
+            font-size: 12px;
+            padding: 1px 8px;
+            border-radius: 99px;
+            border: 1px solid currentColor
+        }
+
+        .badge.ok {
+            color: var(--ok)
+        }
+
+        .badge.bad {
+            color: var(--bad)
+        }
+
+        .charts {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+            gap: 12px
+        }
+
+        .chart {
+            min-width: 0
+        }
+
+        .chart h3 {
+            margin: 0;
+            font-size: 12.5px;
+            font-weight: 600
+        }
+
+        .chart h3 span {
+            color: var(--mute);
+            font-weight: 400;
+            margin-left: 4px
+        }
+
+        .leg {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px 12px;
+            font-size: 12px;
+            color: var(--mute);
+            min-height: 18px
+        }
+
+        .leg i {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            margin-right: 4px
+        }
+
+        .leg b {
+            color: var(--ink);
+            font-weight: 600;
+            font-variant-numeric: tabular-nums
+        }
+
+        canvas {
+            width: 100%;
+            height: 124px;
+            display: block
+        }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Klipper MCU Stats</h1>
+      <form id="f">
+        <input id="url"
+               placeholder="Printer URL, e.g. http://voron.local"
+               autocomplete="url"
+               spellcheck="false">
+        <button class="primary">Connect</button>
+      </form>
+      <label>
+        Window
+        <select id="win">
+          <option value="60">1 min</option>
+          <option value="300" selected>5 min</option>
+          <option value="900">15 min</option>
+          <option value="1800">30 min</option>
+        </select>
+      </label>
+      <label>
+        Poll
+        <select id="ivl">
+          <option value="500">0.5 s</option>
+          <option value="1000" selected>1 s</option>
+          <option value="2000">2 s</option>
+          <option value="5000">5 s</option>
+        </select>
+      </label>
+      <button id="pause" type="button">Pause</button>
+      <div id="status"><span id="dot"></span><span id="stxt">Not connected</span></div>
+    </header>
+    <main id="main">
+      <div class="empty">Enter your printer's URL (the Moonraker address) and press Connect. Every <code>mcu</code> and matching <code>canbus_stats</code> object found will be graphed live.</div>
+    </main>
+
+    <script>
+        const $ = s => document.querySelector(s);
+        const SPECS = [{
+            t: 'CPU awake',
+            u: '%',
+            s: [
+                ['Awake', 'mcu_awake', {
+                    m: 100
+                }]
+            ]
+        }, {
+            t: 'Task time',
+            u: 'µs',
+            s: [
+                ['Avg', 'mcu_task_avg', {
+                    m: 1e6
+                }],
+                ['Std dev', 'mcu_task_stddev', {
+                    m: 1e6
+                }]
+            ]
+        }, {
+            t: 'Clock offset from nominal',
+            u: 'ppm',
+            s: [
+                ['freq', 'freq', {
+                    ppm: 1
+                }],
+                ['adj', 'adj', {
+                    ppm: 1
+                }]
+            ]
+        }, {
+            t: 'Round trip',
+            u: 'ms',
+            s: [
+                ['srtt', 'srtt', {
+                    m: 1000
+                }],
+                ['rttvar', 'rttvar', {
+                    m: 1000
+                }],
+                ['rto', 'rto', {
+                    m: 1000
+                }]
+            ]
+        }, {
+            t: 'Throughput',
+            u: 'B/s',
+            s: [
+                ['Write', 'bytes_write', {
+                    r: 1
+                }],
+                ['Read', 'bytes_read', {
+                    r: 1
+                }]
+            ]
+        }, {
+            t: 'Messages',
+            u: 'msg/s',
+            s: [
+                ['Send', 'send_seq', {
+                    r: 1
+                }],
+                ['Receive', 'receive_seq', {
+                    r: 1
+                }]
+            ]
+        }, {
+            t: 'Retransmits and invalid',
+            u: '/s',
+            s: [
+                ['Retransmit B', 'bytes_retransmit', {
+                    r: 1
+                }],
+                ['Invalid B', 'bytes_invalid', {
+                    r: 1
+                }],
+                ['Retransmit msg', 'retransmit_seq', {
+                    r: 1
+                }]
+            ]
+        }, {
+            t: 'Queues',
+            u: 'bytes',
+            s: [
+                ['Ready', 'ready_bytes', {}],
+                ['Upcoming', 'upcoming_bytes', {}]
+            ]
+        }, ];
+        const CAN = {
+            t: 'CAN errors (cumulative)',
+            u: 'count',
+            s: [
+                ['RX err', 'rx_error', {
+                    c: 1
+                }],
+                ['TX err', 'tx_error', {
+                    c: 1
+                }],
+                ['TX retries', 'tx_retries', {
+                    c: 1
+                }]
+            ]
+        };
+        const KEEP = 1900; // seconds of history retained
+
+        let base = '',
+            query = '',
+            mcus = [],
+            paused = false,
+            token = 0,
+            timer = 0;
+
+        const fmt = v => {
+            const a = Math.abs(v);
+            if (a >= 1e6) return +(v / 1e6).toPrecision(3) + 'M';
+            if (a >= 1e3) return +(v / 1e3).toPrecision(3) + 'k';
+            if (a === 0) return '0';
+            if (a < .01) return v.toExponential(1);
+            return +v.toPrecision(3) + '';
+        };
+        const esc = s => String(s).replace(/[&<>"]/g, c => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;'
+        } [c]));
+        const store = {
+            get(k) {
+                try {
+                    return localStorage.getItem(k) || ''
+                } catch {
+                    return ''
+                }
+            },
+            set(k, v) {
+                try {
+                    localStorage.setItem(k, v)
+                } catch {}
+            }
+        };
+
+        function setStatus(txt, state) {
+            $('#stxt').textContent = txt;
+            $('#dot').className = state || '';
+        }
+
+        function normUrl(u) {
+            u = u.trim();
+            if (!u) return '';
+            if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+            return u.replace(/\/+$/, '');
+        }
+        async function jget(path) {
+            const r = await fetch(base + path, {
+                cache: 'no-store'
+            });
+            if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+            return (await r.json()).result;
+        }
+
+        // value of one series at sample index i (null if unavailable)
+        function valAt(mc, key, o, i) {
+            const S = mc.samples,
+                s = S[i];
+            const src = o.c ? s.c : s.d;
+            if (!src) return null;
+            let v = src[key];
+            if (typeof v !== 'number') return null;
+            if (o.ppm) {
+                const clk = mc.consts && mc.consts.CLOCK_FREQ;
+                if (!clk) return null;
+                return (v - clk) / clk * 1e6;
+            }
+            if (o.r) {
+                if (i === 0) return null;
+                const p = S[i - 1].d;
+                if (!p || typeof p[key] !== 'number') return null;
+                const dt = s.t - S[i - 1].t;
+                if (dt <= 0) return null;
+                const d = (v - p[key]) / dt;
+                return d < 0 ? null : d;
+            }
+            return o.m ? v * o.m : v;
+        }
+
+        class Chart {
+            constructor(spec, mc, host) {
+                this.spec = spec;
+                this.mc = mc;
+                this.hx = null;
+                host.innerHTML = `<h3>${spec.t}<span>${spec.u}</span></h3><div class="leg"></div><canvas></canvas>`;
+                this.cv = host.querySelector('canvas');
+                this.leg = host.querySelector('.leg');
+                this.cv.addEventListener('mousemove', e => {
+                    this.hx = e.offsetX;
+                    this.draw();
+                });
+                this.cv.addEventListener('mouseleave', () => {
+                    this.hx = null;
+                    this.draw();
+                });
+            }
+            draw() {
+                const {
+                    spec,
+                    mc,
+                    cv
+                } = this, S = mc.samples, n = S.length;
+                const cs = getComputedStyle(document.documentElement),
+                    cols = ['--c1', '--c2', '--c3'].map(k => cs.getPropertyValue(k).trim());
+                const mute = cs.getPropertyValue('--mute').trim(),
+                    grid = cs.getPropertyValue('--grid').trim();
+                const win = +$('#win').value,
+                    dpr = window.devicePixelRatio || 1,
+                    w = cv.clientWidth,
+                    h = cv.clientHeight;
+                if (!w) return;
+                if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+                    cv.width = Math.round(w * dpr);
+                    cv.height = Math.round(h * dpr);
+                }
+                const g = cv.getContext('2d');
+                g.setTransform(dpr, 0, 0, dpr, 0, 0);
+                g.clearRect(0, 0, w, h);
+                if (!n) return;
+                const tmax = S[n - 1].t,
+                    tmin = tmax - win;
+                let i0 = n - 1;
+                while (i0 > 0 && S[i0 - 1].t >= tmin) i0--;
+                const vals = spec.s.map(([, key, o]) => {
+                    const a = [];
+                    for (let i = i0; i < n; i++) a.push(valAt(mc, key, o, i));
+                    return a;
+                });
+                let lo = Infinity,
+                    hi = -Infinity;
+                vals.forEach(a => a.forEach(v => {
+                    if (v !== null) {
+                        if (v < lo) lo = v;
+                        if (v > hi) hi = v;
+                    }
+                }));
+                if (lo === Infinity) {
+                    lo = 0;
+                    hi = 1;
+                }
+                if (lo >= 0) lo = 0;
+                else lo -= (hi - lo) * .08;
+                if (hi <= lo) hi = lo + 1;
+                else hi += (hi - lo) * .08;
+                const L = 42,
+                    R = 8,
+                    T = 6,
+                    B = 16,
+                    pw = w - L - R,
+                    ph = h - T - B;
+                const X = t => L + (t - tmin) / win * pw,
+                    Y = v => T + (1 - (v - lo) / (hi - lo)) * ph;
+                g.font = '10.5px system-ui,sans-serif';
+                g.textBaseline = 'middle';
+                g.lineWidth = 1;
+                for (let k = 0; k <= 3; k++) {
+                    const v = lo + (hi - lo) * k / 3,
+                        y = Y(v);
+                    g.strokeStyle = grid;
+                    g.beginPath();
+                    g.moveTo(L, y + .5);
+                    g.lineTo(w - R, y + .5);
+                    g.stroke();
+                    g.fillStyle = mute;
+                    g.textAlign = 'right';
+                    g.fillText(fmt(v), L - 5, y);
+                }
+                g.textBaseline = 'alphabetic';
+                g.textAlign = 'left';
+                g.fillStyle = mute;
+                g.fillText('-' + (win >= 120 ? Math.round(win / 60) + 'm' : win + 's'), L, h - 3);
+                g.textAlign = 'right';
+                g.fillText('now', w - R, h - 3);
+                g.lineJoin = 'round';
+                g.lineWidth = 1.6;
+                vals.forEach((a, si) => {
+                    g.strokeStyle = cols[si % 3];
+                    g.beginPath();
+                    let pen = false;
+                    a.forEach((v, j) => {
+                        if (v === null) {
+                            pen = false;
+                            return;
+                        }
+                        const x = X(S[i0 + j].t),
+                            y = Y(v);
+                        if (!pen) {
+                            g.moveTo(x, y);
+                            pen = true;
+                        } else g.lineTo(x, y);
+                    });
+                    g.stroke();
+                });
+                // hover or latest
+                let hi_ = n - 1;
+                if (this.hx !== null) {
+                    const t = tmin + (this.hx - L) / pw * win;
+                    let best = 1e9;
+                    for (let i = i0; i < n; i++) {
+                        const d = Math.abs(S[i].t - t);
+                        if (d < best) {
+                            best = d;
+                            hi_ = i;
+                        }
+                    }
+                    const x = X(S[hi_].t);
+                    g.strokeStyle = mute;
+                    g.lineWidth = 1;
+                    g.beginPath();
+                    g.moveTo(x + .5, T);
+                    g.lineTo(x + .5, T + ph);
+                    g.stroke();
+                    vals.forEach((a, si) => {
+                        const v = a[hi_ - i0];
+                        if (v !== null) {
+                            g.fillStyle = cols[si % 3];
+                            g.beginPath();
+                            g.arc(x, Y(v), 3, 0, 7);
+                            g.fill();
+                        }
+                    });
+                }
+                this.leg.innerHTML = spec.s.map(([label], si) => {
+                    const v = vals[si][hi_ - i0];
+                    return `<span><i style="background:${cols[si%3]}"></i>${label} <b>${v === null || v === undefined ? '–' : fmt(v)}</b></span>`;
+                }).join('') + (this.hx !== null ? `<span>${Math.round(S[hi_].t - tmax)}s</span>` : '');
+            }
+        }
+
+        function build(objects) {
+            const suffix = n => n.split(' ').slice(1).join(' ') || n;
+            const cans = objects.filter(o => o.startsWith('canbus_stats '));
+            const main = $('#main');
+            main.innerHTML = '';
+            mcus = objects.filter(o => o === 'mcu' || o.startsWith('mcu ')).map(name => {
+                const can = cans.find(c => suffix(c) === suffix(name)) || null;
+                const el = document.createElement('section');
+                el.className = 'mcu';
+                el.innerHTML = `<div class="mhead"><h2>${esc(name)}</h2><span class="meta"></span></div><div class="charts"></div>`;
+                main.appendChild(el);
+                const mc = {
+                    name,
+                    can,
+                    samples: [],
+                    consts: null,
+                    ver: '',
+                    el,
+                    meta: el.querySelector('.meta'),
+                    charts: []
+                };
+                const specs = can ? [...SPECS, CAN] : SPECS;
+                specs.forEach(sp => {
+                    const h = document.createElement('div');
+                    h.className = 'chart';
+                    el.querySelector('.charts').appendChild(h);
+                    mc.charts.push(new Chart(sp, mc, h));
+                });
+                return mc;
+            });
+            if (!mcus.length) main.innerHTML = '<div class="empty">No <code>mcu</code> objects found on this printer.</div>';
+            query = '/printer/objects/query?' + mcus.flatMap(m => m.can ? [m.name, m.can] : [m.name]).map(encodeURIComponent).join('&');
+        }
+
+        function ingest(r) {
+            const t = r.eventtime;
+            mcus.forEach(mc => {
+                const st = r.status[mc.name];
+                if (!st || !st.last_stats) return;
+                const last = mc.samples[mc.samples.length - 1];
+                if (last && last.t >= t) return;
+                mc.consts = st.mcu_constants || mc.consts;
+                mc.ver = st.mcu_version || mc.ver;
+                const cs = mc.can ? r.status[mc.can] : null;
+                mc.samples.push({
+                    t,
+                    d: st.last_stats,
+                    c: cs
+                });
+                while (mc.samples.length > 2 && t - mc.samples[0].t > KEEP) mc.samples.shift();
+                const c = mc.consts || {};
+                mc.meta.innerHTML = [c.MCU, mc.ver, c.CLOCK_FREQ ? (c.CLOCK_FREQ / 1e6) + ' MHz' : '', c.CANBUS_FREQUENCY ? 'CAN ' + (c.CANBUS_FREQUENCY / 1e3) + ' kbit/s' : ''].filter(Boolean).map(esc).join(' · ') +
+                    (cs ? ` <span class="badge ${cs.bus_state === 'active' ? 'ok' : 'bad'}">${esc(cs.bus_state)}</span>` : '');
+            });
+            redraw();
+        }
+        let raf = 0;
+
+        function redraw() {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => mcus.forEach(m => m.charts.forEach(c => c.draw())));
+        }
+
+        async function tick(gen) {
+            if (gen !== token) return;
+            if (!paused) {
+                try {
+                    ingest(await jget(query));
+                    if (gen === token) setStatus('Live · ' + base.replace(/^https?:\/\//, ''), 'ok');
+                } catch (e) {
+                    if (gen === token) setStatus('Request failed: ' + e.message + ' (retrying)', 'bad');
+                }
+            }
+            if (gen === token) timer = setTimeout(() => tick(gen), +$('#ivl').value);
+        }
+
+        async function connect(raw) {
+            clearTimeout(timer);
+            const gen = ++token;
+            base = normUrl(raw);
+            if (!base) return;
+            store.set('klipperUrl', base);
+            $('#url').value = base;
+            setStatus('Connecting…', '');
+            try {
+                const res = await jget('/printer/objects/list');
+                if (gen !== token) return;
+                build(res.objects);
+                tick(gen);
+            } catch (e) {
+                if (gen !== token) return;
+                const mixed = location.protocol === 'https:' && base.startsWith('http:');
+                setStatus('Could not reach printer: ' + e.message + (mixed ? ' (https page blocking http request)' : ' (check URL and Moonraker cors_domains)'), 'bad');
+            }
+        }
+
+        $('#f').addEventListener('submit', e => {
+            e.preventDefault();
+            connect($('#url').value);
+        });
+        $('#pause').addEventListener('click', () => {
+            paused = !paused;
+            $('#pause').textContent = paused ? 'Resume' : 'Pause';
+            if (paused) setStatus('Paused', '');
+        });
+        $('#win').addEventListener('change', redraw);
+        window.addEventListener('resize', redraw);
+        const saved = store.get('klipperUrl');
+        if (saved) {
+            $('#url').value = saved;
+            connect(saved);
+        }
+    </script>
+  </body>
+</html>
